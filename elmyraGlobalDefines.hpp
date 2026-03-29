@@ -74,6 +74,19 @@
 // Expressed as % of voice 1 base pitch; 15 means ±15% range.
 #define CROSSFM_SCALE   15
 
+// ── Resonant LP filter (one-knob texture sweep via Mod) ───────────────────
+// Coefficients are * 256 fixed-point.
+// f_fixed  = 2*sin(π*fc/fs)*256 ≈ 2*π*fc/fs*256 for fc << fs
+//   OPEN  ≈ 7 kHz  →  2*sin(π*7000/24000)*256 ≈ 406  → use 380 (conservative)
+//   CLOSED≈ 150 Hz →  2*sin(π*150/24000)*256  ≈  8
+// damp_fixed = (1/Q)*256
+//   OPEN  → Q=0.5   → 1/Q=2.0  → 512   (overdamped, no resonance peak)
+//   CLOSED→ Q≈6.4   → 1/Q=0.16 → 40    (screamy; push delay feedback to self-oscillate)
+#define FILTER_F_OPEN      380
+#define FILTER_F_CLOSED      8
+#define FILTER_DAMP_OPEN   512
+#define FILTER_DAMP_CLOSED  40
+
 // ── Special mode indices (wave button double-tap) ──────────────────────────
 #define SPECIAL_MODE_LFO_STEPPED_NUM  0   // wave1 double-tap: triangle ↔ S&H LFO
 #define SPECIAL_MODE_CROSSFM_NUM      1   // wave2 double-tap: cross-FM on / off

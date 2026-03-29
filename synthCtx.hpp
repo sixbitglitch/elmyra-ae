@@ -6,6 +6,7 @@
 #include "Oscillator.hpp"
 #include "LFO.hpp"
 #include "Euclidean.hpp"
+#include "Filter.hpp"
 
 class synthCtx
 {
@@ -16,6 +17,7 @@ public:
     slewEnvelope   env[NUM_VOICES];
     LFO            lfo[NUM_VOICES];    // one slow LFO per voice for pitch drift
     EuclideanClock euclid;             // Euclidean rhythm engine for voice 2 (perc)
+    Filter         flt;               // resonant LP filter, pre-delay
 
     // ── Per-voice state ────────────────────────────────────────────────────
     int touch_value[NUM_VOICES];

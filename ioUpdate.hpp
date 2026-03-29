@@ -198,11 +198,17 @@ static inline void updateSpecialModes(synthCtx *ctx)
     prevEuclidSpecial = curEuclidSpecial;
 }
 
-// ── Tune pots ──────────────────────────────────────────────────────────────
-// All three voices: pot → base pitch.  LFO offset is applied later in updateVoices.
-// Mod knob: controls LFO depth (replaces "noise amount"; low mod = subtle drift,
-// high mod = wide pitch wander).  The OSC mod amount is kept at zero by default
-// so oscillators are clean; dial in mod for deliberate noise if desired.
+// ── Tune pots + Mod knob one-knob texture sweep ────────────────────────────
+// Tune pots: base pitch for all three voices (unchanged from stock).
+//
+// Mod knob: single gesture controls three things simultaneously —
+//   1. LFO depth  (0 → LFO_DEPTH_MAX):        pitch drift widens
+//   2. Filter cutoff (OPEN → CLOSED):          sound gets darker
+//   3. Filter resonance (none → screamy):      peak builds around cutoff
+//
+// All three scale together so the knob sweeps from
+// "clean, open, static" → "dark, wobbly, resonant" in one move.
+// At full mod + high delay feedback the filter can self-oscillate.
 
 static inline void updateInputOscTune(synthCtx *ctx)
 {
@@ -210,10 +216,15 @@ static inline void updateInputOscTune(synthCtx *ctx)
     ctx->osc_tune[1] = 1 + getValueFromPotTune(PIN_IN_TUNE_2, &ctx->tune_value[1], POT_DEAD_ZONE_TUNE, SMOOTHING_FACTOR_TUNE) * 200;
     ctx->osc_tune[2] = 1 + getValueFromPotTune(PIN_IN_TUNE_3, &ctx->tune_value[2], POT_DEAD_ZONE_TUNE, SMOOTHING_FACTOR_TUNE) * 200;
 
-    // Mod knob → LFO depth (0 to LFO_DEPTH_MAX)
-    ctx->mod_value = scalePotValue(
-        getValueFromPot(PIN_IN_MOD, &ctx->mod_value_raw, POT_DEAD_ZONE_NORMAL, SMOOTHING_FACTOR_NORMAL),
-        LFO_DEPTH_MAX);
+    int modRaw = getValueFromPot(PIN_IN_MOD, &ctx->mod_value_raw, POT_DEAD_ZONE_NORMAL, SMOOTHING_FACTOR_NORMAL);
+
+    // 1. LFO depth
+    ctx->mod_value = (int)((long)modRaw * LFO_DEPTH_MAX / POT_MAX);
+
+    // 2 & 3. Filter cutoff sweeps down, resonance sweeps up
+    int f_fixed    = FILTER_F_OPEN    - (int)((long)(FILTER_F_OPEN    - FILTER_F_CLOSED)    * modRaw / POT_MAX);
+    int damp_fixed = FILTER_DAMP_OPEN - (int)((long)(FILTER_DAMP_OPEN - FILTER_DAMP_CLOSED) * modRaw / POT_MAX);
+    ctx->flt.setParams(f_fixed, damp_fixed);
 }
 
 // ── Delay + Euclidean tempo ────────────────────────────────────────────────

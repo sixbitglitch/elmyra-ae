@@ -94,6 +94,7 @@ void fillBuffer()
     if (!tmp_sample_waiting)
     {
       tmp_sample = (getOscSample(0) + getOscSample(1) + getOscSample(2)) / AMP_MAX / NUM_VOICES;
+      tmp_sample = ctx.flt.process(tmp_sample);
       tmp_sample = (((DELAY_POT_SCALE_MIX - ctx.delay_wet) * tmp_sample) + (ctx.delay_wet * ctx.dly.getSample(tmp_sample))) / DELAY_POT_SCALE_MIX;
       //TODO compression?
 
