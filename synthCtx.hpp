@@ -37,12 +37,11 @@ public:
     // ── Shruti pitch state ─────────────────────────────────────────────────
     int shrutiRoot;         // index into scale[] (0–SHRUTI_ROOT_MAX)
 
-    // ── Mod / reverb raw pot values (for smoothing) ───────────────────────
-    int mod_value;          // LFO depth / filter sweep (computed from mod pot)
-    int mod_value_raw;
-    int rev_feedback_raw;
-    int rev_damping_raw;
-    int rev_mix_raw;
+    // ── Raw pot values (for smoothing) ────────────────────────────────────
+    int mod_value_raw;       // MOD knob — instrument selector
+    int brightness_raw;      // F.BACK knob — tone brightness / filter sweep
+    int rev_damping_raw;     // TIME knob  — reverb amount (feedback + damping)
+    int rev_mix_raw;         // MIX knob   — reverb wet/dry
 
     synthCtx()
     {
@@ -73,11 +72,10 @@ public:
         }
 
         shrutiRoot      = 36;   // C4
-        mod_value       = 0;
         mod_value_raw   = 0;
-        rev_feedback_raw = 0;
-        rev_damping_raw  = 0;
-        rev_mix_raw      = 0;
+        brightness_raw  = 0;
+        rev_damping_raw = 0;
+        rev_mix_raw     = 0;
 
         // LFO rates: per-voice multipliers ×1.0 / ×1.13 / ×0.84 of base rate.
         // Base rate set in ioUpdate from TUNE 3; hardcode reasonable startup default.

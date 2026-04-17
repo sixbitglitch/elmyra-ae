@@ -57,9 +57,9 @@ Touch pad 3 (octave)─┘
 
 | Knob | Function |
 |------|----------|
-| MOD | Tone brightness — closes a resonant LP filter as you turn it up (open = full bandwidth, full = dark and resonant) |
-| F.BACK | Reverb decay — how long the tail lasts |
-| TIME | Reverb damping — high frequencies die faster at higher settings (low = bright, high = warm/dark) |
+| MOD | Instrument — selects one of 8 timbral presets (0 = Natural → 7 = Wild; see below) |
+| TIME | Reverb amount — single knob; scales decay length and warmth together (low = no reverb, high = long warm room) |
+| F.BACK | Tone brightness — LP filter cutoff + resonance sweep (low = open/bright, high = dark/resonant) |
 | MIX | Reverb wet/dry |
 
 **Per-voice toggles (3 rows)**
@@ -113,19 +113,37 @@ are in irrational ratios (×1.0 / ×1.13 / ×0.84) so they drift in and out of p
 in a pattern that never exactly repeats. TUNE 2 controls the depth (zero = perfectly
 static, useful for checking tuning) and TUNE 3 controls the base speed.
 
-### MOD — tone brightness
+### MOD — instrument selector
 
-Turns a single knob into a tone sweep: as MOD increases, a two-pole resonant LP
+Eight preset timbres selected by a single knob. Each changes the oscillator
+waveform, voice intervals, and LFO baseline character. TUNE 2/3 then sculpt
+detuning and breathing speed on top of the preset character.
+
+| # | Name | Character |
+|---|------|-----------|
+| 0 | Natural | Pure sawtooth, root/fifth/octave — most acoustic, user controls all texture |
+| 1 | Harmonium | Rounded wave, gentle built-in flutter — classic shruti box |
+| 2 | Reed | Mid-forward, chorus detune between voices for audible beating |
+| 3 | Tanpura | Soft, voice 2 at fifth+octave (19 semitones) for shimmer |
+| 4 | Bagpipe | Bright square-ish, fourth instead of fifth, faster tremolo |
+| 5 | Temple | Round wave, root/fifth/double-octave, very slow LFO |
+| 6 | Cluster | Root/third/fifth stack — close harmonic cluster, no octave |
+| 7 | Wild | Minor seventh + major tenth, heavy detune, fast wavering |
+
+On preset 0 (Natural), SHAPE 2 still switches the middle stop between fifth and
+major third. On all other presets the intervals are fixed by the preset.
+
+### F.BACK — tone brightness
+
+Turns a single knob into a tone sweep: as F.BACK increases, a two-pole resonant LP
 filter closes (from ~7 kHz down to ~150 Hz) and a resonance peak builds at the
-cutoff. At full MOD with high reverb this pushes the sound into dark, warm territory.
+cutoff. Low = open and bright. High = dark and resonant.
 Stack SCRATCH (hardware distortion) for extra harmonic richness.
 
 ### Reverb
 
-A Schroeder reverb (4 comb filters + 2 allpass filters) replaces the tape delay
-of earlier firmware versions. The three reverb knobs give direct control:
-- **F.BACK** — how long the tail sustains
-- **TIME** — tonal character of the tail (bright ↔ dark/warm)
+A Schroeder reverb (4 comb filters + 2 allpass filters) replaces the tape delay.
+- **TIME** — single reverb amount knob; scales decay length and warmth together
 - **MIX** — how much reverb is in the mix
 
 ---
@@ -136,9 +154,9 @@ of earlier firmware versions. The three reverb knobs give direct control:
 - Complete firmware replacement: three reed stops, chromatic root tuning
 - Breath-like envelopes (2.5 s attack / 4 s release default)
 - Per-voice LFO detuning with irrational rate ratios for organic aliveness
-- SHAPE 2 toggle: perfect fifth ↔ major third for middle stop
+- SHAPE 2 toggle: perfect fifth ↔ major third (Natural preset only)
 - Schroeder algorithmic reverb (replaces tape delay)
-- Resonant LP filter on MOD knob
+- MOD = 8 instrument presets; F.BACK = tone brightness; TIME = one-knob reverb
 
 **v0.2 — Evolving Drone + Algo Perc**
 - Per-voice drift LFOs, Euclidean percussion engine, cross-FM, tape delay

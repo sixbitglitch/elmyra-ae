@@ -73,19 +73,25 @@
 #define FILTER_DAMP_OPEN   512   // 1/Q=2.0, no resonance
 #define FILTER_DAMP_CLOSED  40   // 1/Q≈0.16, resonant peak
 
+// ── Instrument selector ────────────────────────────────────────────────────
+// MOD knob sweeps through SHRUTI_NUM_INSTRUMENTS discrete presets.
+// Preset 0 is the most natural/acoustic; presets increase in character/effect.
+#define SHRUTI_NUM_INSTRUMENTS   8
+
 // ── Reverb pot scaling ─────────────────────────────────────────────────────
-// F.BACK → feedback 0–950 (feedback inside comb, ×1024 fixed-point)
-// TIME   → damping  0–900 (HF rolloff inside comb, ×1024 fixed-point)
-// MIX    → mix      0–1024 (wet/dry, ×1024 fixed-point)
+// TIME → single "reverb amount" knob: scales feedback AND damping together
+//   Low  = no reverb (transparent)
+//   High = long, warm reverb tail
+// MIX  → wet/dry
+// F.BACK → tone brightness (repurposed — see filter sweep below)
 #define REVERB_FEEDBACK_MAX   950
 #define REVERB_DAMPING_MAX    900
 #define REVERB_MIX_MAX       1024
 
-// ── SHAPE toggle special meanings (SHAPE 2 only — physical toggle switch) ──
-// SHAPE 2 HIGH = perfect fifth (+7 semitones)
-// SHAPE 2 LOW  = major third  (+4 semitones)
-// SHAPE 1 = oscillator slew (saw ↔ softer) — same as always
-// SHAPE 3 = unused / available
+// ── SHAPE toggle assignments ───────────────────────────────────────────────
+// SHAPE 1 = oscillator slew — pressed overrides preset to softest wave
+// SHAPE 2 HIGH = perfect fifth (+7 semitones), LOW = major third (+4)
+// SHAPE 3 HIGH = normal octave band (C4), LOW = low octave band (C3)
 
 // ── Pin definitions ────────────────────────────────────────────────────────
 #define PIN_IN_GSR_1         A3
@@ -95,8 +101,8 @@
 #define PIN_IN_TUNE_2        20
 #define PIN_IN_TUNE_3        21
 #define PIN_IN_MOD           A4
-#define PIN_IN_DELAY_FEEDBACK 22   // → reverb decay
-#define PIN_IN_DELAY_TIME    23    // → reverb damping
+#define PIN_IN_DELAY_FEEDBACK 22   // → tone brightness (filter sweep)
+#define PIN_IN_DELAY_TIME    23    // → reverb amount (feedback + damping)
 #define PIN_IN_DELAY_MIX     25    // → reverb wet/dry
 #define PIN_IN_WAVE_1         7
 #define PIN_IN_WAVE_2        12
