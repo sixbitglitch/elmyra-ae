@@ -34,7 +34,7 @@ static inline int getValueFromPotTune(int input, int *oldValue, int dead_zone, i
     }
     else
     {
-        factor = 2000 / abs(*oldValue - newValue) + 2;
+        factor = 2000 / (abs(*oldValue - newValue) + 1) + 2;
     }
     *oldValue = (*oldValue * (factor - 1) + newValue) / factor;
     return *oldValue;
@@ -46,22 +46,13 @@ static inline int scalePotValue(int potValue, int scale)
 }
 
 // ── Touch input ────────────────────────────────────────────────────────────
-// Voices 0 & 1: gate drones (same as stock).
-// Voice 2:      touch fires a manual perc trigger (does NOT gate voice 2 directly;
-//               the euclidean engine owns voice 2 – touch adds extra hits on top).
+// Each pad gates its reed stop independently.
 
 static inline void updateInputTouch(synthCtx *ctx)
 {
     ctx->touch_value[0] = getValueFromTouchSensor(PIN_IN_GSR_1, &ctx->touch_value[0], SMOOTHING_FACTOR_TOUCH);
     ctx->touch_value[1] = getValueFromTouchSensor(PIN_IN_GSR_2, &ctx->touch_value[1], SMOOTHING_FACTOR_TOUCH);
     ctx->touch_value[2] = getValueFromTouchSensor(PIN_IN_GSR_3, &ctx->touch_value[2], SMOOTHING_FACTOR_TOUCH);
-
-    // Manual perc trigger: sustained touch on sensor 3 keeps the gate open.
-    if (ctx->touch_value[2] > ENV_MIN)
-    {
-        int gateLen = (ctx->env_speed[2] == 1) ? PERC_GATE_SLOW : PERC_GATE_FAST;
-        ctx->percTriggerCount = gateLen;
-    }
 
 #ifdef SERIAL_DEBUG_TOUCH
     Serial.print("t0: "); Serial.print(ctx->touch_value[0]);
@@ -70,8 +61,9 @@ static inline void updateInputTouch(synthCtx *ctx)
 #endif
 }
 
-// ── Envelope speed buttons ─────────────────────────────────────────────────
-// Unchanged from stock: toggle slow/fast envelope; double-tap = bypass.
+// ── ENV speed buttons ──────────────────────────────────────────────────────
+// Single toggle: slow / fast envelope.
+// Double-tap: bypass (voice stays fully on — good for open drone).
 
 static inline int updateSingleEnvSpeed(synthCtx *ctx, int voice, int input)
 {
@@ -123,178 +115,96 @@ static inline void updateInputEnvSpeed(synthCtx *ctx)
     ctx->env_speed[2] = updateSingleEnvSpeed(ctx, 2, PIN_IN_ENV_3);
 }
 
-// ── Wave / slew buttons ────────────────────────────────────────────────────
-// Single press: toggle oscillator slew (same as stock).
-// Double-tap special modes (new meanings):
-//   Voice 0 (wave1): toggle LFO mode  triangle ↔ S&H  [SPECIAL_MODE_LFO_STEPPED_NUM]
-//   Voice 1 (wave2): toggle cross-FM  on / off         [SPECIAL_MODE_CROSSFM_NUM]
-//   Voice 2 (wave3): advance Euclidean pattern preset   [SPECIAL_MODE_EUCLID_NEXT_NUM]
-
-static inline int updateSingleOscWave(synthCtx *ctx, int voice, int input)
-{
-    int stateChanged;
-    int state = ((digitalRead(input) == HIGH) ? OSC_WAVE_SLEW_LOW : OSC_WAVE_SLEW_HIGH);
-
-    if (ctx->waveSpecialModeCountdown[voice] > 0)
-    {
-        ctx->waveSpecialModeCountdown[voice]--;
-    }
-
-    if (ctx->waveState[voice] != state)
-    {
-        stateChanged = 1;
-        ctx->waveState[voice] = state;
-    }
-    else
-    {
-        stateChanged = 0;
-    }
-
-    if (stateChanged)
-    {
-        if (ctx->waveSpecialModeCountdown[voice] > 0)
-        {
-            ctx->waveSpecialMode[voice] = ctx->waveSpecialMode[voice] ? 0 : 1;
-            ctx->waveSpecialModeCountdown[voice] = 0;
-            return state;
-        }
-        else
-        {
-            ctx->waveSpecialModeCountdown[voice] = SPECIAL_MODE_ENABLE_TIME * IO_UPDATE_FREQ;
-        }
-    }
-
-    return state;
-}
+// ── SHAPE / Wave toggles ───────────────────────────────────────────────────
+// SHAPE 1: oscillator slew (saw ↔ softer) for all voices.
+// SHAPE 2: interval toggle for middle stop — HIGH = fifth, LOW = major third.
+// SHAPE 3: unused (reads slew only for consistency).
 
 static inline void updateInputOscWave(synthCtx *ctx)
 {
-    ctx->osc_slew[0] = updateSingleOscWave(ctx, 0, PIN_IN_WAVE_1);
-    ctx->osc_slew[1] = updateSingleOscWave(ctx, 1, PIN_IN_WAVE_2);
-    ctx->osc_slew[2] = updateSingleOscWave(ctx, 2, PIN_IN_WAVE_3);
+    ctx->osc_slew[0] = (digitalRead(PIN_IN_WAVE_1) == HIGH) ? OSC_WAVE_SLEW_LOW : OSC_WAVE_SLEW_HIGH;
+    // SHAPE 2 interval is read directly in updateShrutiPitch — still capture slew state
+    ctx->osc_slew[1] = (digitalRead(PIN_IN_WAVE_2) == HIGH) ? OSC_WAVE_SLEW_LOW : OSC_WAVE_SLEW_HIGH;
+    ctx->osc_slew[2] = (digitalRead(PIN_IN_WAVE_3) == HIGH) ? OSC_WAVE_SLEW_LOW : OSC_WAVE_SLEW_HIGH;
 }
 
-// ── Special mode responses ─────────────────────────────────────────────────
+// ── Shruti pitch + filter sweep ────────────────────────────────────────────
+// TUNE 1 → root note (quantized to chromatic scale, index 0–SHRUTI_ROOT_MAX)
+// TUNE 2 → LFO detuning depth (0 → SHRUTI_DETUNE_MAX mHz)
+// TUNE 3 → LFO rate (SHRUTI_LFO_RATE_MIN → SHRUTI_LFO_RATE_MAX mHz)
+// MOD    → filter cutoff + resonance sweep (same one-knob texture as before)
+// SHAPE 2 → interval for voice 1: HIGH = fifth (+7), LOW = major third (+4)
 
-static inline void updateSpecialModes(synthCtx *ctx)
+static inline void updateShrutiPitch(synthCtx *ctx)
 {
-    // LFO mode: waveSpecialMode[0] toggles triangle / S&H for all voices
-    int lfoMode = ctx->waveSpecialMode[SPECIAL_MODE_LFO_STEPPED_NUM]
-                  ? LFO::MODE_SH : LFO::MODE_TRIANGLE;
-    ctx->lfo[0].setMode(lfoMode);
-    ctx->lfo[1].setMode(lfoMode);
-    ctx->lfo[2].setMode(lfoMode);
+    // Root note
+    int tune1Raw  = getValueFromPotTune(PIN_IN_TUNE_1, &ctx->tune_value[0], POT_DEAD_ZONE_TUNE, SMOOTHING_FACTOR_TUNE);
+    ctx->shrutiRoot = (tune1Raw * SHRUTI_ROOT_MAX) / POT_MAX;
+    if (ctx->shrutiRoot > SHRUTI_ROOT_MAX) ctx->shrutiRoot = SHRUTI_ROOT_MAX;
 
-    // Cross-FM: waveSpecialMode[1]
-    ctx->crossFM = ctx->waveSpecialMode[SPECIAL_MODE_CROSSFM_NUM];
+    // Voice 0: root
+    ctx->osc_tune[0] = scale[ctx->shrutiRoot];
 
-    // Euclidean next preset: rising edge of waveSpecialMode[2]
-    static int prevEuclidSpecial = 0;
-    int curEuclidSpecial = ctx->waveSpecialMode[SPECIAL_MODE_EUCLID_NEXT_NUM];
-    if (curEuclidSpecial && !prevEuclidSpecial)
-    {
-        ctx->euclid.nextPreset();
-    }
-    prevEuclidSpecial = curEuclidSpecial;
-}
+    // Voice 1: fifth or major third (SHAPE 2 toggle)
+    int interval = (digitalRead(PIN_IN_WAVE_2) == HIGH) ? 7 : 4;
+    ctx->osc_tune[1] = scale[ctx->shrutiRoot + interval];
 
-// ── Tune pots + Mod knob one-knob texture sweep ────────────────────────────
-// Tune pots: base pitch for all three voices (unchanged from stock).
-//
-// Mod knob: single gesture controls three things simultaneously —
-//   1. LFO depth  (0 → LFO_DEPTH_MAX):        pitch drift widens
-//   2. Filter cutoff (OPEN → CLOSED):          sound gets darker
-//   3. Filter resonance (none → screamy):      peak builds around cutoff
-//
-// All three scale together so the knob sweeps from
-// "clean, open, static" → "dark, wobbly, resonant" in one move.
-// At full mod + high delay feedback the filter can self-oscillate.
+    // Voice 2: octave
+    ctx->osc_tune[2] = scale[ctx->shrutiRoot + 12];
 
-static inline void updateInputOscTune(synthCtx *ctx)
-{
-    ctx->osc_tune[0] = 1 + getValueFromPotTune(PIN_IN_TUNE_1, &ctx->tune_value[0], POT_DEAD_ZONE_TUNE, SMOOTHING_FACTOR_TUNE) * 200;
-    ctx->osc_tune[1] = 1 + getValueFromPotTune(PIN_IN_TUNE_2, &ctx->tune_value[1], POT_DEAD_ZONE_TUNE, SMOOTHING_FACTOR_TUNE) * 200;
-    ctx->osc_tune[2] = 1 + getValueFromPotTune(PIN_IN_TUNE_3, &ctx->tune_value[2], POT_DEAD_ZONE_TUNE, SMOOTHING_FACTOR_TUNE) * 200;
+    // LFO depth from TUNE 2
+    int tune2Raw  = getValueFromPot(PIN_IN_TUNE_2, &ctx->tune_value[1], POT_DEAD_ZONE_NORMAL, SMOOTHING_FACTOR_NORMAL);
+    int detuneDepth = (tune2Raw * SHRUTI_DETUNE_MAX) / POT_MAX;
+    ctx->lfo[0].setDepth(detuneDepth);
+    ctx->lfo[1].setDepth(detuneDepth);
+    ctx->lfo[2].setDepth(detuneDepth);
 
+    // LFO rate from TUNE 3 — apply irrational per-voice multipliers for beating
+    int tune3Raw  = getValueFromPot(PIN_IN_TUNE_3, &ctx->tune_value[2], POT_DEAD_ZONE_NORMAL, SMOOTHING_FACTOR_NORMAL);
+    int baseRate  = SHRUTI_LFO_RATE_MIN + ((tune3Raw * (SHRUTI_LFO_RATE_MAX - SHRUTI_LFO_RATE_MIN)) / POT_MAX);
+    ctx->lfo[0].setRate(baseRate,              SAMPLE_RATE);   // ×1.00
+    ctx->lfo[1].setRate((baseRate * 113) / 100, SAMPLE_RATE);  // ×1.13
+    ctx->lfo[2].setRate((baseRate *  84) / 100, SAMPLE_RATE);  // ×0.84
+
+    // MOD → filter cutoff + resonance (one-knob sweep)
     int modRaw = getValueFromPot(PIN_IN_MOD, &ctx->mod_value_raw, POT_DEAD_ZONE_NORMAL, SMOOTHING_FACTOR_NORMAL);
-
-    // 1. LFO depth
-    ctx->mod_value = (int)((long)modRaw * LFO_DEPTH_MAX / POT_MAX);
-
-    // 2 & 3. Filter cutoff sweeps down, resonance sweeps up
+    ctx->mod_value = modRaw;
     int f_fixed    = FILTER_F_OPEN    - (int)((long)(FILTER_F_OPEN    - FILTER_F_CLOSED)    * modRaw / POT_MAX);
     int damp_fixed = FILTER_DAMP_OPEN - (int)((long)(FILTER_DAMP_OPEN - FILTER_DAMP_CLOSED) * modRaw / POT_MAX);
     ctx->flt.setParams(f_fixed, damp_fixed);
 }
 
-// ── Delay + Euclidean tempo ────────────────────────────────────────────────
-// Delay knob values are unchanged.
-// Additionally the raw delay-time pot value drives the Euclidean step period,
-// so the rhythm and the delay echoes share a common "pulse width" feeling.
-
-static inline void updateInputDelay(synthCtx *ctx)
-{
-    int new_time = getValueFromPot(PIN_IN_DELAY_TIME, &ctx->delay_time, POT_DEAD_ZONE_NORMAL, SMOOTHING_FACTOR_NORMAL);
-
-    // Euclidean step period (samples): map pot full range → slow…fast
-    long euclidPeriod = EUCLID_STEP_PERIOD_MIN +
-        ((long)(EUCLID_STEP_PERIOD_MAX - EUCLID_STEP_PERIOD_MIN) * (POT_MAX - new_time)) / POT_MAX;
-    ctx->euclid.setStepPeriod(euclidPeriod);
-
-    // Delay time with fine-tune at low end (unchanged from stock)
-    if (new_time < DELAY_TIME_FINETUNE_POINT)
-    {
-        new_time /= DELAY_TIME_FINETUNE_FACTOR;
-    }
-    else
-    {
-        new_time = DELAY_POT_SCALE_TIME + (new_time - DELAY_TIME_FINETUNE_POINT);
-    }
-    new_time = (DELAY_POT_SCALE_TIME * new_time) / (POT_MAX - (DELAY_TIME_FINETUNE_POINT / DELAY_TIME_FINETUNE_FACTOR));
-    ctx->dly.setTime(new_time);
-
-    ctx->dly.setFeedback(scalePotValue(
-        getValueFromPot(PIN_IN_DELAY_FEEDBACK, &ctx->delay_feedback, POT_DEAD_ZONE_NORMAL, SMOOTHING_FACTOR_NORMAL),
-        DELAY_POT_SCALE_FEEDBACK));
-    ctx->delay_wet = scalePotValue(
-        getValueFromPot(PIN_IN_DELAY_MIX, &ctx->delay_wet_raw, POT_DEAD_ZONE_NORMAL, SMOOTHING_FACTOR_NORMAL),
-        DELAY_POT_SCALE_MIX);
-}
-
 // ── LFOs ──────────────────────────────────────────────────────────────────
-// Tick each LFO forward by one ioUpdate window (IO_ADVANCE samples).
-// Depth is set by the mod knob.  Each voice has a different base rate,
-// creating slow harmonic beating that never repeats.
+// Advance each LFO by one ioUpdate window.
+// Rates and depths are already set in updateShrutiPitch.
 
 static inline void updateLFOs(synthCtx *ctx)
 {
-    int depth = ctx->mod_value;   // 0 … LFO_DEPTH_MAX
-
-    ctx->lfo[0].setDepth(depth);
-    ctx->lfo[1].setDepth(depth);
-    ctx->lfo[2].setDepth(depth);
-
     ctx->lfo_value[0] = ctx->lfo[0].tick(IO_ADVANCE);
     ctx->lfo_value[1] = ctx->lfo[1].tick(IO_ADVANCE);
     ctx->lfo_value[2] = ctx->lfo[2].tick(IO_ADVANCE);
 }
 
-// ── Euclidean clock ────────────────────────────────────────────────────────
-// Ticked every ioUpdate.  A beat fires → set percTriggerCount on voice 2.
+// ── Reverb controls ────────────────────────────────────────────────────────
+// F.BACK → reverb decay (feedback 0–REVERB_FEEDBACK_MAX)
+// TIME   → reverb damping / HF rolloff (0–REVERB_DAMPING_MAX)
+// MIX    → wet/dry (0–REVERB_MIX_MAX)
 
-static inline void updateEuclidean(synthCtx *ctx)
+static inline void updateReverb(synthCtx *ctx)
 {
-    if (ctx->euclid.tick((long)IO_ADVANCE))
-    {
-        int gateLen = (ctx->env_speed[2] == 1) ? PERC_GATE_SLOW : PERC_GATE_FAST;
-        ctx->percTriggerCount = gateLen;
-    }
+    int fb  = getValueFromPot(PIN_IN_DELAY_FEEDBACK, &ctx->rev_feedback_raw, POT_DEAD_ZONE_NORMAL, SMOOTHING_FACTOR_NORMAL);
+    int dmp = getValueFromPot(PIN_IN_DELAY_TIME,     &ctx->rev_damping_raw,  POT_DEAD_ZONE_NORMAL, SMOOTHING_FACTOR_NORMAL);
+    int mix = getValueFromPot(PIN_IN_DELAY_MIX,      &ctx->rev_mix_raw,      POT_DEAD_ZONE_NORMAL, SMOOTHING_FACTOR_NORMAL);
+
+    ctx->rev.setFeedback((fb  * REVERB_FEEDBACK_MAX) / POT_MAX);
+    ctx->rev.setDamping ((dmp * REVERB_DAMPING_MAX)  / POT_MAX);
+    ctx->rev.setMix     ((mix * REVERB_MIX_MAX)      / POT_MAX);
 }
 
 // ── Voice updates ─────────────────────────────────────────────────────────
-// Voices 0 & 1: evolving drones – base pitch + LFO drift + optional cross-FM.
-// Voice  2:     percussive – base pitch + LFO variation, envelope gated by
-//               euclidean triggers (or manual touch on sensor 3).
+// All three voices use the shruti breath envelope.
+// Frequency = base pitch from scale[] + LFO offset.
+// Touch pad gates envelope; ENV toggle sets speed; double-tap = bypass.
 
 static inline void updateVoices(synthCtx *ctx)
 {
@@ -302,94 +212,37 @@ static inline void updateVoices(synthCtx *ctx)
 
     for (i = 0; i < NUM_VOICES; i++)
     {
+        // Oscillator
         ctx->osc[i].setSlew(ctx->osc_slew[i]);
-        ctx->osc[i].setModAmount(0);   // oscillators are clean; mod goes to LFO
-    }
-
-    // ── Voice 0: drone with LFO drift ─────────────────────────────────────
-    {
-        int freq = ctx->osc_tune[0] + ctx->lfo_value[0];
+        ctx->osc[i].setModAmount(0);   // clean oscillators; texture comes from filter
+        int freq = ctx->osc_tune[i] + ctx->lfo_value[i];
         if (freq < 1) freq = 1;
-        ctx->osc[0].setFreq(freq);
+        ctx->osc[i].setFreq(freq);
 
-        if (ctx->env_speed[0] == ENV_BYPASS)
+        // Envelope
+        if (ctx->env_speed[i] == ENV_BYPASS)
         {
-            ctx->env_value[0] = AMP_MAX;
+            ctx->env_value[i] = AMP_MAX;
         }
         else
         {
-            ctx->env[0].setAttack(ENV_ATTACK * ctx->env_speed[0]);
-            ctx->env[0].setRelease(ENV_RELEASE * ctx->env_speed[0]);
-            ctx->env_value[0] = ctx->env[0].getLevel(ctx->touch_value[0]);
-        }
-    }
-
-    // ── Voice 1: drone with LFO drift + optional cross-FM from voice 0 ───
-    {
-        int freq = ctx->osc_tune[1] + ctx->lfo_value[1];
-        if (ctx->crossFM)
-        {
-            // voice 0 amplitude shifts voice 1 pitch by up to ±CROSSFM_SCALE %
-            int fm = (ctx->env_value[0] * ctx->osc_tune[1] * CROSSFM_SCALE) / (AMP_MAX * 100);
-            freq += fm;
-        }
-        if (freq < 1) freq = 1;
-        ctx->osc[1].setFreq(freq);
-
-        if (ctx->env_speed[1] == ENV_BYPASS)
-        {
-            ctx->env_value[1] = AMP_MAX;
-        }
-        else
-        {
-            ctx->env[1].setAttack(ENV_ATTACK * ctx->env_speed[1]);
-            ctx->env[1].setRelease(ENV_RELEASE * ctx->env_speed[1]);
-            ctx->env_value[1] = ctx->env[1].getLevel(ctx->touch_value[1]);
-        }
-    }
-
-    // ── Voice 2: Euclidean percussion ─────────────────────────────────────
-    // LFO adds pitch variation between hits (each hit can land on a
-    // slightly different frequency, creating a melodic perc feel).
-    {
-        int freq = ctx->osc_tune[2] + ctx->lfo_value[2];
-        if (freq < 1) freq = 1;
-        ctx->osc[2].setFreq(freq);
-
-        // Gate: euclidean trigger or manual touch both load percTriggerCount.
-        int touchVal;
-        if (ctx->percTriggerCount > 0)
-        {
-            ctx->percTriggerCount--;
-            touchVal = ENV_MAX + 10;   // hard gate open
-        }
-        else
-        {
-            touchVal = 0;              // gate closed → envelope releases
-        }
-
-        if (ctx->env_speed[2] == ENV_BYPASS)
-        {
-            ctx->env_value[2] = AMP_MAX;
-        }
-        else
-        {
-            ctx->env[2].setAttack(ENV_ATTACK  * ctx->env_speed[2]);
-            ctx->env[2].setRelease(ENV_RELEASE * ctx->env_speed[2]);
-            ctx->env_value[2] = ctx->env[2].getLevel(touchVal);
+            int attack  = SHRUTI_ENV_ATTACK  * ctx->env_speed[i];
+            int release = SHRUTI_ENV_RELEASE * ctx->env_speed[i];
+            ctx->env[i].setAttack(attack);
+            ctx->env[i].setRelease(release);
+            ctx->env_value[i] = ctx->env[i].getLevel(ctx->touch_value[i]);
         }
     }
 }
 
 // ── LEDs ───────────────────────────────────────────────────────────────────
-// Voices 0 & 1: light when envelope is open (shows drone activity).
-// Voice  2: flashes on each euclidean trigger (shows rhythm).
+// On when the stop's envelope is open (touching that pad).
 
 static inline void updateOutputEnvLED(synthCtx *ctx)
 {
     digitalWrite(PIN_OUT_ENV_1, ctx->env_value[0] ? HIGH : LOW);
     digitalWrite(PIN_OUT_ENV_2, ctx->env_value[1] ? HIGH : LOW);
-    digitalWrite(PIN_OUT_ENV_3, ctx->percTriggerCount > 0 ? HIGH : LOW);
+    digitalWrite(PIN_OUT_ENV_3, ctx->env_value[2] ? HIGH : LOW);
 }
 
 // ── Main IO update entry point ─────────────────────────────────────────────
@@ -399,11 +252,9 @@ void ioUpdate(synthCtx *ctx)
     updateInputTouch(ctx);
     updateInputEnvSpeed(ctx);
     updateInputOscWave(ctx);
-    updateSpecialModes(ctx);
-    updateInputOscTune(ctx);
+    updateShrutiPitch(ctx);
     updateLFOs(ctx);
-    updateInputDelay(ctx);
-    updateEuclidean(ctx);
+    updateReverb(ctx);
     updateVoices(ctx);
     updateOutputEnvLED(ctx);
 }

@@ -17,7 +17,6 @@
 #define NUM_VOICES         3
 #define AUDIO_BUF_SIZE  1000
 #define AUDIO_BUF_PREFILL 100
-#define DELAY_BUF_SIZE 12000
 
 // ── Input smoothing ────────────────────────────────────────────────────────
 #define SMOOTHING_FACTOR_TUNE    1
@@ -27,70 +26,61 @@
 #define POT_DEAD_ZONE_NORMAL    30
 
 // ── Envelope ───────────────────────────────────────────────────────────────
-#define ENV_MAX          500
-#define ENV_MIN           50
-#define ENV_ATTACK         2
-#define ENV_RELEASE        2
-#define ENV_SPEED_FACTOR  32
+#define ENV_MAX               500
+#define ENV_MIN                50
+#define ENV_ATTACK              2   // stock default (overridden per mode)
+#define ENV_RELEASE             2
+#define ENV_SPEED_FACTOR       32
 #define SPECIAL_MODE_ENABLE_TIME 1
+
+// ── Shruti box envelope ────────────────────────────────────────────────────
+// Called at IO_UPDATE_FREQ (25 Hz); ENV_MAX = 500
+//   attack  8  → 500/8  = 62 updates × 40ms ≈ 2.5 s  (breath in)
+//   release 5  → 500/5  = 100 updates × 40ms ≈ 4 s   (slow exhale)
+// Fast ENV mode (ENV_SPEED_FACTOR = 32) gives near-instant response.
+#define SHRUTI_ENV_ATTACK       8
+#define SHRUTI_ENV_RELEASE      5
+
+// ── Shruti pitch ───────────────────────────────────────────────────────────
+// Root index range constrained so root+12 (octave) stays within scale[].
+// SCALE_MAX = 76, so max root index = 76 - 13 = 63.
+#define SHRUTI_ROOT_MAX        63
+
+// ── Shruti LFO (reed detuning / breathing) ─────────────────────────────────
+// TUNE 3 sweeps rate across this range (mHz).
+// TUNE 2 sets depth up to SHRUTI_DETUNE_MAX (mHz).
+// Per-voice rate multipliers create slightly different rates → beating.
+#define SHRUTI_LFO_RATE_MIN   500    // mHz  (0.5 Hz — slow flutter)
+#define SHRUTI_LFO_RATE_MAX  3000    // mHz  (3.0 Hz — faster tremolo)
+#define SHRUTI_DETUNE_MAX    2000    // mHz  (±2 Hz max pitch offset)
 
 // ── Oscillator ─────────────────────────────────────────────────────────────
 #define OSC_WAVE_SLEW_LOW        1
 #define OSC_WAVE_SLEW_HIGH      10
 #define OSC_SLEW_SCALE           1
-#define OSC_MOD_AMOUNT_MAX     128
-#define POT_TUNE_BASE        20000
-#define POT_TUNE_SCALE         100
 
-// ── Delay ──────────────────────────────────────────────────────────────────
-#define DELAY_POT_SCALE_MIX       4095
-#define DELAY_POT_SCALE_TIME       500
-#define DELAY_POT_SCALE_FEEDBACK  1023
-#define DELAY_TIME_SLEW            500
-#define DELAY_TIME_FINETUNE_POINT 1000
-#define DELAY_TIME_FINETUNE_FACTOR   2
-
-// ── LFO (slow pitch drift) ─────────────────────────────────────────────────
-// Three voices get slightly different rates; irrational ratios ensure
-// the beating pattern never repeats on a human timescale.
-#define LFO_RATE_VOICE_0    80   // mHz  (0.080 Hz, ~12 s cycle)
-#define LFO_RATE_VOICE_1   113   // mHz  (0.113 Hz, ratio ≈ √2 vs voice 0)
-#define LFO_RATE_VOICE_2    67   // mHz  (0.067 Hz, ratio ≈ √(1/sqrt2) vs voice 0)
-#define LFO_DEPTH_MAX    20000   // mHz  (max pitch offset at full mod knob)
-
-// ── Euclidean percussion clock ─────────────────────────────────────────────
-// Clock tempo is derived from the Delay Time knob.
-// EUCLID_STEP_PERIOD_MIN = ~120 BPM at 16th notes (8 steps/s)
-// EUCLID_STEP_PERIOD_MAX = ~0.5 steps/s (very slow clock)
-#define EUCLID_STEP_PERIOD_MIN   3000L   // samples per step (fast)
-#define EUCLID_STEP_PERIOD_MAX  48000L   // samples per step (slow)
-#define EUCLID_STEP_PERIOD_DEFAULT 6000L // startup default
-
-// Perc gate length in ioUpdate ticks (at 25 Hz):
-#define PERC_GATE_SLOW  8   // ~320 ms  (use with slow env speed)
-#define PERC_GATE_FAST  2   // ~ 80 ms  (use with fast env speed)
-
-// ── Cross-FM (voice 0 amplitude modulates voice 1 pitch) ──────────────────
-// Expressed as % of voice 1 base pitch; 15 means ±15% range.
-#define CROSSFM_SCALE   15
-
-// ── Resonant LP filter (one-knob texture sweep via Mod) ───────────────────
-// Coefficients are * 256 fixed-point.
-// f_fixed  = 2*sin(π*fc/fs)*256 ≈ 2*π*fc/fs*256 for fc << fs
-//   OPEN  ≈ 7 kHz  →  2*sin(π*7000/24000)*256 ≈ 406  → use 380 (conservative)
-//   CLOSED≈ 150 Hz →  2*sin(π*150/24000)*256  ≈  8
-// damp_fixed = (1/Q)*256
-//   OPEN  → Q=0.5   → 1/Q=2.0  → 512   (overdamped, no resonance peak)
-//   CLOSED→ Q≈6.4   → 1/Q=0.16 → 40    (screamy; push delay feedback to self-oscillate)
+// ── Resonant LP filter (MOD knob one-sweep) ───────────────────────────────
+// Coefficients × 256 fixed-point.
+// OPEN  ≈ 7 kHz  (f = 2sin(π·7000/24000)·256 ≈ 380)
+// CLOSED≈ 150 Hz (f = 2sin(π·150/24000)·256  ≈ 8)
 #define FILTER_F_OPEN      380
 #define FILTER_F_CLOSED      8
-#define FILTER_DAMP_OPEN   512
-#define FILTER_DAMP_CLOSED  40
+#define FILTER_DAMP_OPEN   512   // 1/Q=2.0, no resonance
+#define FILTER_DAMP_CLOSED  40   // 1/Q≈0.16, resonant peak
 
-// ── Special mode indices (wave button double-tap) ──────────────────────────
-#define SPECIAL_MODE_LFO_STEPPED_NUM  0   // wave1 double-tap: triangle ↔ S&H LFO
-#define SPECIAL_MODE_CROSSFM_NUM      1   // wave2 double-tap: cross-FM on / off
-#define SPECIAL_MODE_EUCLID_NEXT_NUM  2   // wave3 double-tap: next Euclidean preset
+// ── Reverb pot scaling ─────────────────────────────────────────────────────
+// F.BACK → feedback 0–950 (feedback inside comb, ×1024 fixed-point)
+// TIME   → damping  0–900 (HF rolloff inside comb, ×1024 fixed-point)
+// MIX    → mix      0–1024 (wet/dry, ×1024 fixed-point)
+#define REVERB_FEEDBACK_MAX   950
+#define REVERB_DAMPING_MAX    900
+#define REVERB_MIX_MAX       1024
+
+// ── SHAPE toggle special meanings (SHAPE 2 only — physical toggle switch) ──
+// SHAPE 2 HIGH = perfect fifth (+7 semitones)
+// SHAPE 2 LOW  = major third  (+4 semitones)
+// SHAPE 1 = oscillator slew (saw ↔ softer) — same as always
+// SHAPE 3 = unused / available
 
 // ── Pin definitions ────────────────────────────────────────────────────────
 #define PIN_IN_GSR_1         A3
@@ -100,9 +90,9 @@
 #define PIN_IN_TUNE_2        20
 #define PIN_IN_TUNE_3        21
 #define PIN_IN_MOD           A4
-#define PIN_IN_DELAY_FEEDBACK 22
-#define PIN_IN_DELAY_TIME    23
-#define PIN_IN_DELAY_MIX     25
+#define PIN_IN_DELAY_FEEDBACK 22   // → reverb decay
+#define PIN_IN_DELAY_TIME    23    // → reverb damping
+#define PIN_IN_DELAY_MIX     25    // → reverb wet/dry
 #define PIN_IN_WAVE_1         7
 #define PIN_IN_WAVE_2        12
 #define PIN_IN_WAVE_3         2
@@ -114,7 +104,7 @@
 #define PIN_OUT_ENV_2        11
 #define PIN_OUT_ENV_3        10
 
-// ── Chromatic scale table (mHz, 76 notes) ─────────────────────────────────
+// ── Chromatic scale table (mHz, 76 notes C0–E7) ───────────────────────────
 #define SCALE_MAX 76
 
 static const int scale[] = \

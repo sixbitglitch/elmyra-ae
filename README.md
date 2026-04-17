@@ -1,160 +1,147 @@
-# Elmyra — Evolving Drone + Algo Perc Firmware
+# Elmyra — Electronic Shruti Box
 
-Elmyra is a DIY drone synthesizer by Neutral Labs, inspired by the Soma Lyra-8.
-It runs on the Adafruit ItsyBitsy M0 Express with added analog distortion and filtering.
-Build docs and original design: https://neutral-labs.com/elmyra
+A portable electronic shruti box firmware for the Neutral Labs Elmyra.
+Three capacitive touch pads become reed stops. Hold them like a real shruti box —
+individually or in combination — to build chords of sustained drone tones that sit
+warmly alongside ukuleles, fiddles, and acoustic shruti boxes in a folk session.
+
+Original Elmyra hardware by Neutral Labs: https://neutral-labs.com/elmyra
+Runs on the Adafruit ItsyBitsy M0 Express.
 
 ---
 
-## This firmware (v0.2)
+## What it is
 
-A full redesign of the AE Alt Firmware, focused on two things:
-
-- **Evolving drones** — three voices with per-voice LFOs at irrational rate ratios, creating slow harmonic beating that never repeats
-- **Algorithmic percussion** — voice 3 is driven by a Euclidean rhythm engine locked to the delay time, while voices 1 & 2 stay as touch-gated drones
-
-A single **Mod knob texture sweep** ties it together: one gesture simultaneously closes a resonant software LP filter and widens the LFO drift, taking the sound from clean and open to dark, wobbly, and screamy.
+A shruti box is a small bellows-driven reed instrument from Indian classical music,
+used as a drone reference in folk and classical sessions. This firmware turns the
+Elmyra into a handmade electronic equivalent: warm, harmonically present, and
+slightly alive — never perfectly static.
 
 ---
 
 ## Signal chain
 
 ```
-Voice 1 ─┐
-Voice 2 ─┼─ sum ──► Software LP Filter ──► Delay (wet/dry) ──► Output
-Voice 3 ─┘              ▲                        ▲
-                   Mod knob                 F.BACK knob
-                (cutoff + resonance)      (self-oscillates at
-                                          high res + feedback)
+Touch pad 1 (root)  ─┐
+Touch pad 2 (fifth) ─┼─ sum ──► LP Filter ──► Reverb ──► Output
+Touch pad 3 (octave)─┘
+      ↑
+  Per-voice LFOs add
+  subtle pitch drift
 ```
-
-LFOs modulate each voice's pitch independently.
-Euclidean clock gates voice 3's envelope.
-Filter sits pre-delay — echoes carry the filtered timbre.
 
 ---
 
 ## Controls
 
-### Global hardware (not in firmware — always active)
+### Hardware (analog circuits — always active)
 
 | Control | Function |
 |---------|----------|
 | POWER | On/off |
-| VOL | Output volume (analog) |
-| SCRATCH | Analog distortion / filter — the filthy one |
-| BITE | Analog clipping |
+| VOL | Output volume |
+| SCRATCH | Analog distortion — adds harmonic grit on top of the digital voice |
+| BITE | Analog hard clip |
 
-### Global firmware
+### Firmware
+
+**Tune knobs**
+
+| Knob | Function |
+|------|----------|
+| TUNE 1 | Root note — sweeps through all 76 chromatic pitches (C0–E7), quantized |
+| TUNE 2 | Reed detuning — how wide the LFO pitch drift is (0 = dead still, full = ±2 Hz flutter) |
+| TUNE 3 | Reed breathing speed — LFO rate (0.5 Hz slow tremolo → 3 Hz faster flutter) |
+
+**Tone / space knobs**
+
+| Knob | Function |
+|------|----------|
+| MOD | Tone brightness — closes a resonant LP filter as you turn it up (open = full bandwidth, full = dark and resonant) |
+| F.BACK | Reverb decay — how long the tail lasts |
+| TIME | Reverb damping — high frequencies die faster at higher settings (low = bright, high = warm/dark) |
+| MIX | Reverb wet/dry |
+
+**Per-voice toggles (3 rows)**
 
 | Control | Function |
 |---------|----------|
-| **MOD** | One-knob texture sweep — see below |
-| **TIME** | Delay echo length **+** Euclidean BPM (coupled) |
-| **F.BACK** | Delay feedback — push high with MOD up for self-oscillation |
-| **MIX** | Delay wet/dry |
+| SHAPE 1 toggle | Oscillator slew — saw (crisp) ↔ softer (rounder) |
+| SHAPE 2 toggle | Middle stop interval — HIGH = perfect fifth, LOW = major third |
+| ENV 1/2/3 toggle | Envelope speed per stop — slow (breath-like, ~2.5 s attack / 4 s release) ↔ fast |
+| ENV double-tap | Bypass — stop stays fully on with no gate needed |
 
-### Per-voice (3 rows)
+**Touch pads**
 
-| Control | Voice 1 & 2 — drones | Voice 3 — percussion |
-|---------|----------------------|----------------------|
-| **TUNE knob** | Base pitch | Perc hit pitch |
-| **ENV toggle** | Slow / fast envelope | Slow / fast gate length |
-| **ENV double-tap** | Bypass — voice always fully on | Same |
-| **SHAPE toggle** | Oscillator slew (saw ↔ softer) | Same |
-| **SHAPE 1 double-tap** | LFO mode: triangle ↔ S&H | — |
-| **SHAPE 2 double-tap** | Cross-FM on / off | — |
-| **SHAPE 3 double-tap** | — | Next Euclidean pattern |
-| **Touch pads** | Gate drone open/closed | Fire a manual perc hit |
+| Pad | Stop |
+|-----|------|
+| Touch pad 1 | Root |
+| Touch pad 2 | Fifth (or major third — set by SHAPE 2) |
+| Touch pad 3 | Octave |
 
-### LEDs
+Hold any combination simultaneously. Release to let the tone fade slowly.
 
-| LED | Behaviour |
-|-----|-----------|
-| Voice 1 & 2 | On when envelope is open |
-| Voice 3 | Flashes on every Euclidean beat |
+**LEDs** — lit while that stop's envelope is open.
 
 ---
 
 ## Features
 
-### Mod knob — one-knob texture sweep
+### Reed stops
 
-Three things move simultaneously with a single knob:
+Three independent drone voices tuned to the root, an interval above the root,
+and an octave above the root. SHAPE 2 toggle switches the middle stop between
+a perfect fifth (traditional shruti box interval) and a major third (for
+major-key drones).
 
-1. **Software LP filter cutoff** closes: ~7 kHz → ~150 Hz
-2. **Filter resonance** builds: transparent → screamy (Q ≈ 0.5 → 6.4)
-3. **LFO pitch drift depth** widens: 0 → ±20000 mHz
+Pitches are quantized to the chromatic scale so the instrument stays in tune
+with other players. TUNE 1 covers the full range from C0 to E7 in semitone steps.
 
-At zero: clean oscillators, full bandwidth, no drift.
-At full: dark, muffled, resonant peak, wide pitch wander.
+### Breath-like envelopes
 
-Stack SCRATCH (hardware distortion) on top and push F.BACK high — at high resonance + high delay feedback the filter self-oscillates.
+The default ENV speed gives a ~2.5 second attack and ~4 second release — long
+enough to feel like breath, short enough to be responsive. Fast ENV mode gives
+near-instant gating. Double-tap any ENV button to lock that stop open permanently.
 
-### Per-voice LFOs — evolving drones
+### Reed detuning (organic aliveness)
 
-Each voice has an independent slow LFO:
+Each voice has its own LFO running at a slightly different rate. The three rates
+are in irrational ratios (×1.0 / ×1.13 / ×0.84) so they drift in and out of phase
+in a pattern that never exactly repeats. TUNE 2 controls the depth (zero = perfectly
+static, useful for checking tuning) and TUNE 3 controls the base speed.
 
-| Voice | Rate | Period |
-|-------|------|--------|
-| 1 | 80 mHz | ~12 s |
-| 2 | 113 mHz | ~9 s |
-| 3 | 67 mHz | ~15 s |
+### MOD — tone brightness
 
-The rate ratios are irrational (≈ √2 relationships) so the beating pattern between voices never repeats on a human timescale. Depth is set by the MOD knob.
+Turns a single knob into a tone sweep: as MOD increases, a two-pole resonant LP
+filter closes (from ~7 kHz down to ~150 Hz) and a resonance peak builds at the
+cutoff. At full MOD with high reverb this pushes the sound into dark, warm territory.
+Stack SCRATCH (hardware distortion) for extra harmonic richness.
 
-**SHAPE 1 double-tap** switches all LFOs between:
-- **Triangle** — smooth, continuous pitch glide
-- **S&H** — stepped random jumps on each LFO cycle
+### Reverb
 
-### Euclidean percussion — voice 3
-
-Voice 3 is driven by a Bjorklund Euclidean rhythm engine. The clock tempo is locked to the TIME knob, so the rhythm grid and the delay echo length move together — rhythmic delays line up with the pattern naturally.
-
-**SHAPE 3 double-tap** cycles through 8 presets:
-
-| # | Pattern | Character |
-|---|---------|-----------|
-| 0 | 4 in 16 | Even quarters — steady pulse |
-| 1 | 3 in 8 | Tresillo — classic Afro-Cuban |
-| 2 | 5 in 16 | Sparse push-pull |
-| 3 | 5 in 8 | Dense syncopation |
-| 4 | 7 in 16 | Hemiola feel |
-| 5 | 7 in 12 | Latin 7 |
-| 6 | 9 in 16 | Very dense |
-| 7 | 3 in 16 | Wide gaps, sparse |
-
-Touch pad 3 fires manual hits on top of whatever the Euclidean pattern is doing. ENV toggle sets gate length (short = percussive click, long = sustained hit).
-
-The LFO on voice 3 also runs, adding slight pitch variation between hits — each strike can land on a slightly different frequency for a melodic perc feel.
-
-### Cross-FM
-
-**SHAPE 2 double-tap** routes voice 1's amplitude into voice 2's pitch (±15% of base pitch). When voice 1 is gated open and loud, voice 2 rises in pitch. Combines with both voices' LFOs for complex, organic timbral movement.
-
-### Resonant LP filter
-
-Two-pole state variable filter inserted before the delay. Parameters are set entirely by the MOD knob — there is no separate filter control. The filter is fully open (transparent) at MOD = 0 and fully engaged at MOD = max.
-
-Because it sits pre-delay, every echo repeats the filtered, resonant timbre. At high resonance + high delay feedback the system can tip into self-oscillation — a continuous pitched ring that can be tuned via the TIME and F.BACK knobs.
+A Schroeder reverb (4 comb filters + 2 allpass filters) replaces the tape delay
+of earlier firmware versions. The three reverb knobs give direct control:
+- **F.BACK** — how long the tail sustains
+- **TIME** — tonal character of the tail (bright ↔ dark/warm)
+- **MIX** — how much reverb is in the mix
 
 ---
 
 ## Changelog
 
-**v0.2 — redesign (this version)**
-- Added per-voice LFOs for evolving pitch drift
-- Added Euclidean percussion engine on voice 3
-- Added two-pole resonant LP filter (pre-delay)
-- Added cross-FM (voice 1 → voice 2 pitch)
-- Mod knob redesigned as one-knob texture sweep (LFO depth + filter cutoff + resonance)
-- Manual sequencer removed
+**v0.3 — Shruti Box (this version)**
+- Complete firmware replacement: three reed stops, chromatic root tuning
+- Breath-like envelopes (2.5 s attack / 4 s release default)
+- Per-voice LFO detuning with irrational rate ratios for organic aliveness
+- SHAPE 2 toggle: perfect fifth ↔ major third for middle stop
+- Schroeder algorithmic reverb (replaces tape delay)
+- Resonant LP filter on MOD knob
+
+**v0.2 — Evolving Drone + Algo Perc**
+- Per-voice drift LFOs, Euclidean percussion engine, cross-FM, tape delay
 
 **v0.1 — AE Alt Firmware by @CharlesGershom**
-- Extended pitch range to ultra-low frequency clicks
-- Random oscillator noise removed from default; moved to Mod knob
-- Mod max values increased
-- Slew for note changes dramatically reduced
+- Extended pitch range, reduced slew, mod-knob noise control
 
-**Stock firmware — Neutral Labs**
+**Stock — Neutral Labs**
 - Original Elmyra firmware

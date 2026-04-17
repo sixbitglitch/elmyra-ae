@@ -1,51 +1,48 @@
 #ifndef SYNTHCTX_HPP
 #define SYNTHCTX_HPP
 
-#include "Delay.hpp"
 #include "slewEnvelope.hpp"
 #include "Oscillator.hpp"
 #include "LFO.hpp"
-#include "Euclidean.hpp"
 #include "Filter.hpp"
+#include "Reverb.hpp"
 
 class synthCtx
 {
 public:
     // ── Core DSP objects ───────────────────────────────────────────────────
-    Oscillator     osc[NUM_VOICES];
-    Delay          dly;
-    slewEnvelope   env[NUM_VOICES];
-    LFO            lfo[NUM_VOICES];    // one slow LFO per voice for pitch drift
-    EuclideanClock euclid;             // Euclidean rhythm engine for voice 2 (perc)
-    Filter         flt;               // resonant LP filter, pre-delay
+    Oscillator    osc[NUM_VOICES];
+    slewEnvelope  env[NUM_VOICES];
+    LFO           lfo[NUM_VOICES];
+    Filter        flt;
+    Reverb        rev;
 
     // ── Per-voice state ────────────────────────────────────────────────────
     int touch_value[NUM_VOICES];
-    int env_led_level[NUM_VOICES];
     int env_value[NUM_VOICES];
     int tune_value[NUM_VOICES];
     int env_speed[NUM_VOICES];
     int osc_slew[NUM_VOICES];
-    int osc_tune[NUM_VOICES];          // base pitch from tune pot (mHz)
-    int lfo_value[NUM_VOICES];         // current LFO output (mHz offset)
-
-    // ── Delay / mod state ──────────────────────────────────────────────────
-    int delay_feedback, delay_time, delay_wet_raw, mod_value, mod_value_raw;
-    int delay_wet;
+    int osc_tune[NUM_VOICES];      // base pitch in mHz (from scale[])
+    int lfo_value[NUM_VOICES];     // current LFO output (mHz offset)
 
     // ── Envelope / wave button state ───────────────────────────────────────
     int envBypass[NUM_VOICES];
     int envState[NUM_VOICES];
     int envStateCountdown[NUM_VOICES];
     int waveState[NUM_VOICES];
-    int waveSpecialMode[NUM_VOICES];
+    int waveSpecialMode[NUM_VOICES];       // unused in shruti but mechanism kept
     int waveSpecialModeCountdown[NUM_VOICES];
 
-    // ── Percussion (voice 2) ───────────────────────────────────────────────
-    int percTriggerCount;   // ioUpdate ticks remaining for the perc gate
+    // ── Shruti pitch state ─────────────────────────────────────────────────
+    int shrutiRoot;         // index into scale[] (0–SHRUTI_ROOT_MAX)
 
-    // ── Cross-FM ──────────────────────────────────────────────────────────
-    int crossFM;            // 0 = off, 1 = voice 0 amplitude → voice 1 pitch
+    // ── Mod / reverb raw pot values (for smoothing) ───────────────────────
+    int mod_value;          // LFO depth / filter sweep (computed from mod pot)
+    int mod_value_raw;
+    int rev_feedback_raw;
+    int rev_damping_raw;
+    int rev_mix_raw;
 
     synthCtx()
     {
@@ -56,36 +53,42 @@ public:
             osc_slew[i] = OSC_WAVE_SLEW_LOW;
             osc[i].setSampleRate(SAMPLE_RATE);
             osc[i].setSlew(osc_slew[i]);
+            osc[i].setModAmount(0);
             env[i].setMax(ENV_MAX);
             env[i].setMin(ENV_MIN);
-            env[i].setAttack(ENV_ATTACK);
-            env[i].setRelease(ENV_RELEASE);
-            envBypass[i]            = 0;
-            envState[i]             = 0;
-            envStateCountdown[i]    = 0;
-            waveSpecialMode[i]      = 0;
-            waveState[i]            = 0;
+            env[i].setAttack(SHRUTI_ENV_ATTACK);
+            env[i].setRelease(SHRUTI_ENV_RELEASE);
+            envBypass[i]             = 0;
+            envState[i]              = 0;
+            envStateCountdown[i]     = 0;
+            waveSpecialMode[i]       = 0;
+            waveState[i]             = 0;
             waveSpecialModeCountdown[i] = 0;
-            tune_value[i]           = 0;
-            env_speed[i]            = 1;
-            lfo_value[i]            = 0;
+            tune_value[i]            = 0;
+            env_speed[i]             = 1;
+            lfo_value[i]             = 0;
+            touch_value[i]           = 0;
+            env_value[i]             = 0;
+            osc_tune[i]              = scale[36]; // C4 default
         }
 
-        // Slightly different rates per voice → slow, never-repeating beating
-        lfo[0].setRate(LFO_RATE_VOICE_0, SAMPLE_RATE);
-        lfo[1].setRate(LFO_RATE_VOICE_1, SAMPLE_RATE);
-        lfo[2].setRate(LFO_RATE_VOICE_2, SAMPLE_RATE);
+        shrutiRoot      = 36;   // C4
+        mod_value       = 0;
+        mod_value_raw   = 0;
+        rev_feedback_raw = 0;
+        rev_damping_raw  = 0;
+        rev_mix_raw      = 0;
 
-        euclid.setPreset(0);
-        euclid.setStepPeriod(EUCLID_STEP_PERIOD_DEFAULT);
-
-        percTriggerCount = 0;
-        crossFM          = 0;
-
-        dly.setSampleRate(SAMPLE_RATE);
-        dly.setTime(delay_time = 0);
-        dly.setFeedback(delay_feedback = 0);
-        delay_wet = 0;
+        // LFO rates: per-voice multipliers ×1.0 / ×1.13 / ×0.84 of base rate.
+        // Base rate set in ioUpdate from TUNE 3; hardcode reasonable startup default.
+        lfo[0].setRate(1000, SAMPLE_RATE);
+        lfo[1].setRate(1130, SAMPLE_RATE);
+        lfo[2].setRate( 840, SAMPLE_RATE);
+        for (i = 0; i < NUM_VOICES; i++)
+        {
+            lfo[i].setDepth(0);
+            lfo[i].setMode(LFO::MODE_TRIANGLE);
+        }
     }
 };
 
