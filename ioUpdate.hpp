@@ -116,31 +116,33 @@ static inline void updateInputEnvSpeed(synthCtx *ctx)
 }
 
 // ── SHAPE / Wave toggles ───────────────────────────────────────────────────
-// SHAPE 1: oscillator slew (saw ↔ softer) for all voices.
-// SHAPE 2: interval toggle for middle stop — HIGH = fifth, LOW = major third.
-// SHAPE 3: unused (reads slew only for consistency).
+// SHAPE 1: oscillator slew (saw ↔ softer) — applies to ALL three voices.
+// SHAPE 2: middle stop interval — read in updateShrutiPitch.
+// SHAPE 3: octave band select   — read in updateShrutiPitch.
 
 static inline void updateInputOscWave(synthCtx *ctx)
 {
-    ctx->osc_slew[0] = (digitalRead(PIN_IN_WAVE_1) == HIGH) ? OSC_WAVE_SLEW_LOW : OSC_WAVE_SLEW_HIGH;
-    // SHAPE 2 interval is read directly in updateShrutiPitch — still capture slew state
-    ctx->osc_slew[1] = (digitalRead(PIN_IN_WAVE_2) == HIGH) ? OSC_WAVE_SLEW_LOW : OSC_WAVE_SLEW_HIGH;
-    ctx->osc_slew[2] = (digitalRead(PIN_IN_WAVE_3) == HIGH) ? OSC_WAVE_SLEW_LOW : OSC_WAVE_SLEW_HIGH;
+    int slew = (digitalRead(PIN_IN_WAVE_1) == HIGH) ? OSC_WAVE_SLEW_LOW : OSC_WAVE_SLEW_HIGH;
+    ctx->osc_slew[0] = slew;
+    ctx->osc_slew[1] = slew;
+    ctx->osc_slew[2] = slew;
 }
 
 // ── Shruti pitch + filter sweep ────────────────────────────────────────────
-// TUNE 1 → root note (quantized to chromatic scale, index 0–SHRUTI_ROOT_MAX)
+// TUNE 1 → root note within one octave (12 semitones)
 // TUNE 2 → LFO detuning depth (0 → SHRUTI_DETUNE_MAX mHz)
 // TUNE 3 → LFO rate (SHRUTI_LFO_RATE_MIN → SHRUTI_LFO_RATE_MAX mHz)
-// MOD    → filter cutoff + resonance sweep (same one-knob texture as before)
-// SHAPE 2 → interval for voice 1: HIGH = fifth (+7), LOW = major third (+4)
+// MOD    → filter cutoff + resonance sweep
+// SHAPE 2 → interval for voice 1: HIGH = perfect fifth (+7), LOW = major third (+4)
+// SHAPE 3 → octave band: HIGH = normal (C4), LOW = low (C3)
 
 static inline void updateShrutiPitch(synthCtx *ctx)
 {
-    // Root note
-    int tune1Raw  = getValueFromPotTune(PIN_IN_TUNE_1, &ctx->tune_value[0], POT_DEAD_ZONE_TUNE, SMOOTHING_FACTOR_TUNE);
-    ctx->shrutiRoot = (tune1Raw * SHRUTI_ROOT_MAX) / POT_MAX;
-    if (ctx->shrutiRoot > SHRUTI_ROOT_MAX) ctx->shrutiRoot = SHRUTI_ROOT_MAX;
+    // Root note — one octave range, band selected by SHAPE 3
+    int tune1Raw   = getValueFromPotTune(PIN_IN_TUNE_1, &ctx->tune_value[0], POT_DEAD_ZONE_TUNE, SMOOTHING_FACTOR_TUNE);
+    int octaveBase = (digitalRead(PIN_IN_WAVE_3) == HIGH) ? SHRUTI_OCTAVE_NORMAL : SHRUTI_OCTAVE_LOW;
+    int semitone   = ((long)tune1Raw * SHRUTI_OCTAVE_SIZE) / (POT_MAX + 1);  // 0–11
+    ctx->shrutiRoot = octaveBase + semitone;
 
     // Voice 0: root
     ctx->osc_tune[0] = scale[ctx->shrutiRoot];

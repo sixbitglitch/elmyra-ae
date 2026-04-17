@@ -49,7 +49,7 @@ Touch pad 3 (octave)─┘
 
 | Knob | Function |
 |------|----------|
-| TUNE 1 | Root note — sweeps through all 76 chromatic pitches (C0–E7), quantized |
+| TUNE 1 | Root note — one octave of chromatic pitches (12 semitones); octave band set by SHAPE 3 |
 | TUNE 2 | Reed detuning — how wide the LFO pitch drift is (0 = dead still, full = ±2 Hz flutter) |
 | TUNE 3 | Reed breathing speed — LFO rate (0.5 Hz slow tremolo → 3 Hz faster flutter) |
 
@@ -66,8 +66,9 @@ Touch pad 3 (octave)─┘
 
 | Control | Function |
 |---------|----------|
-| SHAPE 1 toggle | Oscillator slew — saw (crisp) ↔ softer (rounder) |
+| SHAPE 1 toggle | Oscillator slew — saw (crisp) ↔ softer (rounder), affects all three stops |
 | SHAPE 2 toggle | Middle stop interval — HIGH = perfect fifth, LOW = major third |
+| SHAPE 3 toggle | Octave band — HIGH = normal (C4 range), LOW = low (C3 range) |
 | ENV 1/2/3 toggle | Envelope speed per stop — slow (breath-like, ~2.5 s attack / 4 s release) ↔ fast |
 | ENV double-tap | Bypass — stop stays fully on with no gate needed |
 
@@ -95,7 +96,9 @@ a perfect fifth (traditional shruti box interval) and a major third (for
 major-key drones).
 
 Pitches are quantized to the chromatic scale so the instrument stays in tune
-with other players. TUNE 1 covers the full range from C0 to E7 in semitone steps.
+with other players. TUNE 1 covers one octave of chromatic pitches. SHAPE 3
+selects the octave band: normal (centred around C4, folk session range) or
+low (one octave below, C3, for bass drone work).
 
 ### Breath-like envelopes
 

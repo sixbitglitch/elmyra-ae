@@ -42,9 +42,14 @@
 #define SHRUTI_ENV_RELEASE      5
 
 // ── Shruti pitch ───────────────────────────────────────────────────────────
-// Root index range constrained so root+12 (octave) stays within scale[].
-// SCALE_MAX = 76, so max root index = 76 - 13 = 63.
-#define SHRUTI_ROOT_MAX        63
+// TUNE 1 covers exactly one octave (12 semitones) within a selected octave band.
+// SHAPE 3 toggle selects the band:
+//   HIGH = normal range, root at C4 (scale index 36)
+//   LOW  = low range,    root at C3 (scale index 24)
+// root + 12 (octave voice) must stay within scale[] (max index 75) — both bands satisfy this.
+#define SHRUTI_OCTAVE_SIZE     12   // one octave = 12 semitones
+#define SHRUTI_OCTAVE_NORMAL   36   // C4 ≈ 262 Hz
+#define SHRUTI_OCTAVE_LOW      24   // C3 ≈ 131 Hz
 
 // ── Shruti LFO (reed detuning / breathing) ─────────────────────────────────
 // TUNE 3 sweeps rate across this range (mHz).
